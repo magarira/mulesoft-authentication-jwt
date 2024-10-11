@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:validation="http://www.mulesoft.org/schema/mule/validation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+	<flow name="jwtTokenAuthFlow" doc:id="cd563a81-0f5f-4144-8789-fb4a5a12e0a3" >
+		<logger level="INFO" doc:name="Logger" doc:id="1b007c88-53cd-42f8-b1ec-f7d0ac938c4a" />
+		<ee:transform doc:name="read private key PEM" doc:id="5af8bab0-0d52-4058-a18c-a12c5944d9c7" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="privateKeyRSA" ><![CDATA[
+
+var privateKey = readUrl("classpath://privateKey/public_key1(Guille-B2B).pem","text/plain") replace "\r" with ""
+var upper_bound = sizeOf(privateKey splitBy ("\n"))-1
+---
+//pem public key without header and footer (BEGIN AND END PUBLIC KEY)
+((privateKey splitBy  ("\n"))[1 to (upper_bound -1 )]) reduce ((item, acc) ->  acc  ++ '\n' ++ item )]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="jwtHeader, jwtPayload to String" doc:id="116a572c-4aee-49f0-b150-056e3a1a6294" >
+			<ee:message >
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="jwtHeader" ><![CDATA[%dw 2.0
+output application/json
+var header = {
+	"alg" : attributes.headers.'alg',
+    "typ" : attributes.headers.'typ'
+
+}
+---
+header]]></ee:set-variable>
+				<ee:set-variable variableName="jwtPayload" ><![CDATA[%dw 2.0
+output application/json
+//var fechaActual = now() as String {format : "yyyy-MM-dd'T'HH:mm:ss.SSS"}
+/*var dataPayload = {
+	"user" : "Rafa Garcia",
+	"sub" : "1234567890",
+	"iat" : fechaActual,
+    "exp" : fechaActual + |PT5M|
+
+}*/
+var dataPayload = payload
+---
+dataPayload]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<set-variable value="#[output text/plain&#10;&#10;var inputExp = attributes.headers.'alg' as String&#10;var algorithm = &#10;  inputExp [0 to 1] match {&#10;  	case &quot;RS&quot; -&gt; &quot;Sha&quot; ++ inputExp[2 to (sizeOf(inputExp)- 1)] ++ &quot;withRSA&quot;&#10;  	case &quot;HS&quot; -&gt; &quot;HmacSHA&quot; ++ inputExp[2 to (sizeOf(inputExp)- 1)]&#10;  	else -&gt; &quot;EsSHA&quot; ++ inputExp[2 to (sizeOf(inputExp)- 1)]&#10;  }&#10; ---&#10; algorithm]" doc:name="algorithm" doc:id="4b083c08-3849-43a1-9fd1-7759bc760155" variableName="algorithm"/>
+		<choice doc:name="Choice" doc:id="e852401e-e7df-4fcd-889d-ff4f4ed6bf52" >
+			<when expression="#[attributes.headers.'alg' [0 to 1] == &quot;HS&quot;]">
+				<ee:transform doc:name="responseJwtToken_HMAC" doc:id="4c671672-6517-4cb8-a73b-806cf5a891a5">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+import * from jwt::HMAC
+output application/json
+
+
+var headersJWT = vars.jwtHeader
+var dataPayload = vars.jwtPayload
+var secret_key = attributes.headers.'secretKey'
+  
+
+---
+{
+    token: JWT(
+    	headersJWT as Object,
+        dataPayload as Object,
+        secret_key as String,
+        vars.algorithm
+    ),
+    expiration: (now() + |PT7150S|)
+}
+]]></ee:set-payload>
+			</ee:message>
+			<ee:variables>
+			</ee:variables>
+		</ee:transform>
+			</when>
+			<otherwise >
+				<ee:transform doc:name="responseJwtToken_RSA" doc:id="ecd4de17-b8d8-428b-9f65-84cc9b1cf1ec">
+					<ee:message>
+						<ee:set-payload><![CDATA[%dw 2.0
+import * from jwt::RSA
+output application/json
+
+
+var headersJWT = vars.jwtHeader
+var dataPayload = vars.jwtPayload
+var secret_key = vars.privateKeyRSA
+  
+
+---
+{
+    token: JWT(
+    	headersJWT as Object,
+        dataPayload as Object,
+        secret_key as String,
+        vars.algorithm as String
+    ),
+    expiration: (now() + |PT7150S|)
+}
+
+]]></ee:set-payload>
+					</ee:message>
+					<ee:variables />
+				</ee:transform>
+			</otherwise>
+		</choice>
+		<logger level="INFO" doc:name="Logger" doc:id="6c03367c-b78e-4ae3-b9b7-00bcdf440d97" />
+	</flow>
+	<flow name="infoTokenFlow" doc:id="32498313-a9e7-4fee-9dd5-8766e887662f" >
+		<!-- [STUDIO:"timeToLive"]<set-variable value="#[output text/plain&#10;import * from dw::core::Binaries&#10;var jwtToken = (attributes.headers.authorization splitBy (&quot; &quot;))[1&#93; as String&#10;var iat = read(fromBase64((jwtToken splitBy  (&quot;.&quot;))[1&#93;),'application/json').iat&#10;&#10;&#45;&#45;-&#10;((now() as String {format : &quot;yyyy-MM-dd'T'HH:mm:ss.SSS&quot;}) - (iat)).seconds&#93;" doc:name="timeToLive" doc:id="fa198591-556a-46ac-8c00-65a8a9e6e9cb" variableName="timeToLive" /> [STUDIO] -->
+		<ee:transform doc:name="Transform Message" doc:id="b8c61a56-bc3c-45b5-b8c7-9118489fbe79">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Binaries
+var responseJwtToken = (attributes.headers.'Authorization' splitBy(" "))[1]
+var headerEncodedUrl = (responseJwtToken splitBy("."))[0]
+var payloadEncodedUrl = (responseJwtToken splitBy("."))[1]
+var secretKeyEncodedUrl = (responseJwtToken splitBy("."))[2]
+---
+{
+	header: read(fromBase64(headerEncodedUrl),'application/json') as Object,
+    body : read(fromBase64(payloadEncodedUrl),'application/json') as Object
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="validationJWTTokenFlow" doc:id="92f94e41-c8cd-4013-a01c-3a47bece40d6" >
+		<set-variable value="#[import * from dw::core::Binaries&#10;var jwtToken = (attributes.headers.authorization splitBy (&quot; &quot;))[1] as String&#10;var iat = read(fromBase64((jwtToken splitBy  (&quot;.&quot;))[1]),'application/json').iat&#10;&#10;---&#10;((now() as String {format : &quot;yyyy-MM-dd'T'HH:mm:ss.SSS&quot;}) - (iat)).seconds]" doc:name="timeToLive" doc:id="13a6832e-edce-42e0-9a89-ee915640cd25" variableName="timeToLive" />
+		<choice doc:name="Choice" doc:id="5915ff92-3957-4c53-a921-7342e626d269">
+			<when expression="#[vars.timeToLive &gt; p('timeToLiveSecondsJWTToken')]">
+				<raise-error doc:name="Raise error" doc:id="b5489a99-9365-4124-b105-3401744ecf9f" type="ERROR_USER:TOKEN_EXPIRED" description="Token has expiration. You must request another JWT Token" />
+			</when>
+		</choice>
+		<error-handler ref="apiDefaultError_Handler" />
+	</flow>
+	<flow name="infoCustomerFlow" doc:id="67c23a8f-dd2e-4a94-9a73-dd712c0f50de" >
+		<ee:transform doc:name="Transform Message" doc:id="c0451ed9-6285-4dd6-90ab-78b000a12a88">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"firstName" : "Jose",
+	"lastName"	: "Gonzalez",
+	"address"	: {
+		street : "Franklin Blv",
+		zipcode : 89000,
+		country : "United states of America"
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>

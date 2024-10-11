@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd ">
+    <http:listener-config name="mule-sys-jwt-token-api-httpListenerConfig">
+        <http:listener-connection host="0.0.0.0" port="8091" />
+    </http:listener-config>
+    <apikit:config name="mule-sys-jwt-token-api-config" api="resource::2ccb1103-0d9f-4cd5-bb0b-aba98377c16a:mule-sys-jwt-token-api:1.0.2:raml:zip:mule-sys-jwt-token-api.raml" outboundHeadersMapName="outboundHeaders" httpStatusVarName="httpStatus" />
+    <flow name="mule-sys-jwt-token-api-main">
+        <http:listener config-ref="mule-sys-jwt-token-api-httpListenerConfig" path="/api/*">
+            <http:response statusCode="#[vars.httpStatus default 200]">
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:response>
+            <http:error-response statusCode="#[vars.httpStatus default 500]">
+                <http:body>#[payload]</http:body>
+                <http:headers>#[vars.outboundHeaders default {}]</http:headers>
+            </http:error-response>
+        </http:listener>
+		<apikit:router config-ref="mule-sys-jwt-token-api-config" />
+		<error-handler ref="global-error-handler" />
+    </flow>
+    <flow name="post:\auth\token:mule-sys-jwt-token-api-config">
+        <logger level="INFO" message="post:\auth\token:mule-sys-jwt-token-api-config" />
+        <flow-ref doc:name="jwtTokenAuthFlow" doc:id="c32170f8-eeba-44a2-815e-a996d5f79a47" name="jwtTokenAuthFlow" />
+    </flow>
+    <flow name="get:\info\token:mule-sys-jwt-token-api-config">
+        <logger level="INFO" message="get:\info\token:mule-sys-jwt-token-api-config" />
+        <flow-ref doc:name="infoTokenFlow" doc:id="345d4c0d-5d8a-4467-906c-8ac90f4a015a" name="infoTokenFlow" />
+    </flow>
+    <flow name="get:\infoCustomer:mule-sys-jwt-token-api-config">
+        <logger level="INFO" message="get:\infoCustomer:mule-sys-jwt-token-api-config" />
+        <flow-ref doc:name="validationJWTTokenFlow" doc:id="e92e558f-1da6-475e-8e80-d2cd5ef60625" name="validationJWTTokenFlow" />
+		<flow-ref doc:name="infoCustomerFlow" doc:id="b77d64f8-567b-4b31-a805-b4d506945b8c" name="infoCustomerFlow" />
+    </flow>
+</mule>

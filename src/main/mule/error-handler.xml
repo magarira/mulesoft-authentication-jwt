@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<error-handler name="apiDefaultError_Handler" doc:id="11ec53db-66a1-462e-9871-b322c8edc177" >
+		<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate" doc:id="a800194f-9942-4189-8f43-4750d0257007" type="ERROR_USER:TOKEN_EXPIRED" >
+			<set-variable value="#[401]" doc:name="Set HTTP Status - 40" doc:id="eca348e4-b715-4516-935b-41e62206d7cd" variableName="httpStatus" />
+			<set-variable value="#[error.errorType.asString]" doc:name="errorMessage" doc:id="76b21ff1-6df0-4e16-be9d-aa51f36efdf8" variableName="errorMessage" />
+			<set-variable value="#[if(!isEmpty(error.muleMessage.typedValue.error.description))(error.muleMessage.typedValue.error.description)else(error.description)]" doc:name="Set errorDescription" doc:id="8e1f608e-aa13-4d04-a73a-d94f9c50a9db" variableName="errorDescription" />
+			<flow-ref doc:name="default-error-response-sub-flow" doc:id="426c1ecc-5a4b-405e-85dc-85ee7fc8b298" name="default-error-response-sub-flow" />
+			<logger level="INFO" doc:name="Logger" doc:id="bcf267d5-7275-4097-842c-cb8135878a47" message='#["\nStatus: \n"]#[vars.httpStatus] #["\nerrorDescription: \n"]#[vars.errorDescription]#["\n"]' />
+		</on-error-propagate>
+		<on-error-propagate enableNotifications="true" logException="true" doc:name="On Error Propagate1" doc:id="8684ab97-423f-42ca-99f4-064521694b9e" type="ANY" >
+			<set-variable value="#[500]" doc:name="Set HTTP Status - 50" doc:id="7ae87fe9-54e0-49e4-abdb-d1e88083a246" variableName="httpStatus" />
+			<set-variable value="#[error.errorType.asString]" doc:name="errorMessage" doc:id="58b2e2e9-7a0f-4fdb-85f7-c940baa37921" variableName="errorMessage" />
+			<set-variable value="#[if(!isEmpty(error.muleMessage.typedValue.error.description))(error.muleMessage.typedValue.error.description)else(error.description)]" doc:name="Set errorDescription" doc:id="0fef66bb-5fa4-417f-8729-868e59b2858b" variableName="errorDescription" />
+			<flow-ref doc:name="default-error-response-sub-flow" doc:id="e03dd74c-3543-47f3-a483-c77a59e98ac8" name="default-error-response-sub-flow" />
+			<logger level="INFO" doc:name="Logger" doc:id="763c4d7f-27e3-42b6-b272-2b4d5f1ff256" message='#["\nStatus: \n"]#[vars.httpStatus] #["\nerrorDescription: \n"]#[vars.errorDescription]#["\n"]' />
+		</on-error-propagate>
+	</error-handler>
+	<sub-flow name="default-error-response-sub-flow" doc:id="6724f084-f989-4796-907e-35d1ea3ddda2" >
+		<ee:transform doc:name="Init Variables" doc:id="f6371dd9-2176-4b90-8b74-87a5bdece1fd" >
+			<ee:message />
+			<ee:variables >
+				<ee:set-variable variableName="errorRaised" ><![CDATA[%dw 2.0
+output application/java
+---
+true]]></ee:set-variable>
+				<ee:set-variable variableName="errorDescription" ><![CDATA[%dw 2.0
+output application/java
+---
+if(vars.errorDescription?) 
+	vars.errorDescription 
+else 
+	error.exception.detailMessage]]></ee:set-variable>
+				<ee:set-variable variableName="logCategory" ><![CDATA[%dw 2.0
+output application/java
+---
+'Exception']]></ee:set-variable>
+				<ee:set-variable variableName="logLevel" ><![CDATA[%dw 2.0
+output application/java
+---
+'ERROR']]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<ee:transform doc:name="Error Response" doc:id="7de3682d-53ab-4f37-82d4-bc58784a720e" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json encoding="UTF-8", skipNullOn="everywhere"
+---
+{
+	error:
+		{
+			httpStatus : vars.httpStatus,
+			message : if(vars.errorMessage != null) vars.errorMessage else (error.errorType.identifier),
+			description: if(vars.errorDescription != null) vars.errorDescription else error.description,
+			dateTime : now() as String { format: "yyyy-MM-dd'T'HH:mm:ss'Z'" }
+		}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Error Log" doc:id="01dd7919-b2cf-4ac6-accb-e5455d300c56" message='#["\nTransaction: \n"]#[vars.transactionId]#["\nError Code : \n"]#[vars.httpStatus]#["\nError Message : \n"]#[error.errorType.identifier as String]#["\nError Description : \n"]#[error.description as String]' />
+	</sub-flow>
+</mule>
